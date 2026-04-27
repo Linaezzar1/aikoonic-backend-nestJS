@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model alembic_version {
+  version_num String @id(map: "alembic_version_pkc") @db.VarChar(32)
+}
+
+model calendar_entries {
+  id                  String               @id @db.Uuid
+  calendar_id         String               @db.Uuid
+  week_number         Int?
+  scheduled_date      DateTime?            @db.Date
+  platform            String               @db.VarChar(100)
+  content_type        String               @db.VarChar(100)
+  title               String
+  objective           String
+  event_reference     String?
+  weather_context     String?
+  notes               String?
+  status              String               @db.VarChar(50)
+  order_index         Int
+  created_at          DateTime             @default(now()) @db.Timestamptz(6)
+  marketing_calendars marketing_calendars  @relation(fields: [calendar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  generated_contents  generated_contents[]
+
+  @@index([calendar_id], map: "ix_calendar_entries_calendar_id")
+}
+
+model generated_contents {
+  id                  String               @id @db.Uuid
+  user_id             String               @db.Uuid
+  calendar_id         String?              @db.Uuid
+  calendar_entry_id   String?              @db.Uuid
+  status              String               @db.VarChar(50)
+  content_format      String               @db.VarChar(50)
+  platform            String?              @db.VarChar(100)
+  title               String?
+  body                String?
+  hashtags            Json?
+  local_context       Json?
+  premium_features    Json?
+  ab_variant          String?              @db.VarChar(20)
+  image_prompt        String?
+  image_url           String?
+  export_batch_id     String?              @db.Uuid
+  metadata            Json?
+  created_at          DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime             @default(now()) @db.Timestamptz(6)
+  calendar_entries    calendar_entries?    @relation(fields: [calendar_entry_id], references: [id], onUpdate: NoAction)
+  marketing_calendars marketing_calendars? @relation(fields: [calendar_id], references: [id], onUpdate: NoAction)
+  source_citations    source_citations[]
+
+  @@index([calendar_entry_id], map: "ix_generated_contents_calendar_entry_id")
+  @@index([calendar_id], map: "ix_generated_contents_calendar_id")
+  @@index([export_batch_id], map: "ix_generated_contents_export_batch_id")
+  @@index([user_id], map: "ix_generated_contents_user_id")
+}
+
+model marketing_calendars {
+  id                   String               @id @db.Uuid
+  user_id              String               @db.Uuid
+  year                 Int
+  month                Int
+  status               String               @db.VarChar(50)
+  is_strategy_approved Boolean              @default(false)
+  is_calendar_approved Boolean              @default(false)
+  strategy_summary     String?
+  generation_context   Json?
+  created_at           DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime             @default(now()) @db.Timestamptz(6)
+  calendar_entries     calendar_entries[]
+  generated_contents   generated_contents[]
+  scraped_sources      scraped_sources[]
+
+  @@index([user_id], map: "ix_marketing_calendars_user_id")
+}
+
+model scraped_sources {
+  id                  String              @id @db.Uuid
+  calendar_id         String              @db.Uuid
+  source_type         String              @db.VarChar(50)
+  source_category     String              @db.VarChar(50)
+  url                 String
+  domain              String              @db.VarChar(255)
+  title               String
+  snippet             String?
+  relevance_score     Float               @default(0.5)
+  scraped_at          DateTime            @db.Timestamptz(6)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  cache_key           String?             @db.VarChar(255)
+  expires_at          DateTime?           @db.Timestamptz(6)
+  is_shared           Boolean             @default(false)
+  scope_city          String?             @db.VarChar(255)
+  scope_sector        String?             @db.VarChar(255)
+  marketing_calendars marketing_calendars @relation(fields: [calendar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  source_citations    source_citations[]
+
+  @@index([cache_key], map: "ix_scraped_sources_cache_key")
+  @@index([calendar_id], map: "ix_scraped_sources_calendar_id")
+  @@index([expires_at], map: "ix_scraped_sources_expires_at")
+  @@index([url], map: "ix_scraped_sources_url")
+}
+
+model source_citations {
+  id                   String             @id @db.Uuid
+  generated_content_id String             @db.Uuid
+  source_id            String             @db.Uuid
+  influence_type       String             @db.VarChar(50)
+  confidence           Float              @default(0.5)
+  created_at           DateTime           @default(now()) @db.Timestamptz(6)
+  generated_contents   generated_contents @relation(fields: [generated_content_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  scraped_sources      scraped_sources    @relation(fields: [source_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([generated_content_id], map: "ix_source_citations_generated_content_id")
+  @@index([source_id], map: "ix_source_citations_source_id")
+}
+
+// ─────────────────────────────────────────
+// TENANT — L'entreprise (cœur du multi-tenant)
+// ─────────────────────────────────────────
+model Tenant {
+  id        String     @id @default(uuid())
+  name      String
+  createdAt DateTime   @default(now())
+
+  leads     Lead[]
+  tags      Tag[]
+  workflows Workflow[]
+}
+
+// ─────────────────────────────────────────
+// LEAD — Le contact client (US18)
+// ─────────────────────────────────────────
+model Lead {
+  id        String     @id @default(uuid())
+  firstName String?
+  lastName  String?
+  email     String
+  phone     String?
+  status    LeadStatus @default(NOUVEAU)
+  source    LeadSource @default(MANUEL)
+  notes     String?
+
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tags       Tag[]               @relation("LeadTags")
+  executions WorkflowExecution[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([email, tenantId])
+  @@index([tenantId])
+}
+
+enum LeadStatus {
+  NOUVEAU
+  QUALIFIE
+  CONVERTI
+  INACTIF
+}
+
+enum LeadSource {
+  MANUEL
+  CSV_IMPORT
+  FORMULAIRE
+  RESEAU_SOCIAL
+}
+
+// ─────────────────────────────────────────
+// TAG — Segmentation des contacts (US19)
+// ─────────────────────────────────────────
+model Tag {
+  id       String  @id @default(uuid())
+  label    String
+  color    String? 
+
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  leads    Lead[]  @relation("LeadTags")
+
+  createdAt DateTime @default(now())
+
+  @@unique([label, tenantId])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────
+// WORKFLOW — Automatisation de suivi (US20)
+// ─────────────────────────────────────────
+model Workflow {
+  id           String   @id @default(cuid())
+  name         String
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trigger      String   // "tag_added" | "status_changed" | "manual" | "import"
+  triggerValue String?  // ex: "VIP" pour tag_added, "QUALIFIE" pour status_changed
+  steps        Json     // [{ type: "send_email"|"change_status"|"wait", value: String, delayDays: Int }]
+  isActive     Boolean  @default(true)
+  executions   WorkflowExecution[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([tenantId])
+}
+
+model WorkflowExecution {
+  id          String    @id @default(cuid())
+  workflowId  String
+  workflow    Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  currentStep Int       @default(0)
+  status      String    @default("running") // "running" | "completed" | "failed"
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([workflowId])
+  @@index([leadId])
+}

@@ -1,0 +1,6 @@
+firstName,lastName,email,phone,notes
+Sarra,Mansouri,sarra@test.com,+21698765432,Client potentiel
+Karim,Belhaj,karim@test.com,+21650123456,Rencontré au salon
+Nadia,Ferchichi,nadia@test.com,,Lead qualifié
+Ahmed,Trabelsi,ahmed@test.com,+21622334455,
+test_invalid,,notanemail,,should be skipped
