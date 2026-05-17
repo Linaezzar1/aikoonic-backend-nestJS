@@ -225,3 +225,88 @@ model WorkflowExecution {
   @@index([workflowId])
   @@index([leadId])
 }
+
+model companies {
+  id                String       @id @db.Uuid
+  user_id           String       @db.Uuid
+  company_name      String?      @db.VarChar(255)
+  activity_sector   String?      @db.VarChar(255)
+  city              String?      @db.VarChar(255)
+  country           String?      @db.VarChar(255)
+  target_audience   String?
+  main_objective    String?
+  tone_of_voice     String?      @db.VarChar(100)
+  platforms         Json?
+  logo_url          String?
+  logo_step_done    Boolean      @default(false)
+  is_completed      Boolean      @default(false)
+  marketing_profile Json?
+  created_at        DateTime     @default(now()) @db.Timestamptz(6)
+  competitors       competitors[]
+
+  @@index([user_id], map: "ix_companies_user_id")
+}
+
+model onboarding_messages {
+  id         String   @id @db.Uuid
+  user_id    String   @db.Uuid
+  role       String   @db.VarChar(10)
+  content    String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([user_id], map: "ix_onboarding_messages_user_id")
+}
+
+model competitors {
+  id            String    @id @db.Uuid
+  company_id    String    @db.Uuid
+  name          String    @db.VarChar(255)
+  website_url   String?
+  facebook_url  String?
+  instagram_url String?
+  tiktok_url    String?
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  company       companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id], map: "ix_competitors_company_id")
+}
+
+model brand_assets {
+  id          String   @id @db.Uuid
+  user_id     String   @db.Uuid
+  asset_type  String   @db.VarChar(20)
+  file_url    String
+  main_colors Json?
+  style_tags  Json?
+  ai_analysis Json?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([user_id], map: "ix_brand_assets_user_id")
+}
+
+model content_examples {
+  id               String   @id @db.Uuid
+  platform         String   @db.VarChar(50)
+  content_type     String   @db.VarChar(50)
+  sector           String   @db.VarChar(100)
+  country          String   @default("FR") @db.VarChar(5)
+  region           String?  @db.VarChar(100)
+  city             String?  @db.VarChar(100)
+  language         String   @default("fr") @db.VarChar(10)
+  objective        String?  @db.VarChar(100)
+  tone             String?  @db.VarChar(50)
+  body             String
+  hashtags         Json     @default("[]")
+  image_prompt     String?
+  engagement_rate  Float?
+  has_local_anchor Boolean  @default(false)
+  has_cultural_ref Boolean  @default(false)
+  source           String   @db.VarChar(20)
+  embedding        Unsupported("vector(384)")? 
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([embedding], map: "ix_content_examples_embedding")
+  @@index([hashtags], map: "ix_content_examples_hashtags")
+  @@index([sector, platform, source], map: "ix_content_examples_sector_platform_source")
+}
