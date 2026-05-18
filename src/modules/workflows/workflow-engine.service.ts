@@ -19,28 +19,35 @@ export class WorkflowEngineService {
     leadId: string,
     tenantId: string,
   ) {
+    // Match workflows that either:
+    // 1. Have an exact triggerValue (e.g. tag "VIP") — specific trigger
+    // 2. Have no triggerValue — uses condition nodes to filter at runtime
     const activeWorkflows = await this.prisma.workflow.findMany({
       where: {
         tenantId,
         isActive: true,
         trigger: event,
-        triggerValue: eventValue,
+        OR: [
+          { triggerValue: eventValue },
+          { triggerValue: null },
+          { triggerValue: '' },
+        ],
       },
     });
 
     for (const workflow of activeWorkflows) {
-      this.logger.log(`Triggering workflow ${workflow.id} for lead ${leadId}`);
-      
+      this.logger.log(`Triggering workflow "${workflow.name}" for lead ${leadId} (event: ${eventValue})`);
+
       const execution = await this.prisma.workflowExecution.create({
         data: {
           workflowId: workflow.id,
           leadId,
+          eventValue,   // store what triggered this (e.g. the tag name)
           status: 'running',
           currentStep: 0,
         },
       });
 
-      // Execute next step immediately asynchronously
       this.executeStep(execution.id).catch((e) =>
         this.logger.error(`Error executing workflow ${execution.id}`, e),
       );
@@ -53,12 +60,9 @@ export class WorkflowEngineService {
       include: { workflow: true, lead: true },
     });
 
-    if (!execution || execution.status !== 'running') {
-      return;
-    }
+    if (!execution || execution.status !== 'running') return;
 
-    const workflow = execution.workflow;
-    const steps = workflow.steps as unknown as WorkflowStepDto[];
+    const steps = execution.workflow.steps as unknown as WorkflowStepDto[];
 
     if (!steps || steps.length === 0 || execution.currentStep >= steps.length) {
       await this.prisma.workflowExecution.update({
@@ -68,61 +72,89 @@ export class WorkflowEngineService {
       return;
     }
 
-    const currentStepConfig = steps[execution.currentStep];
+    const step = steps[execution.currentStep];
 
     try {
-      if (currentStepConfig.type === 'change_status') {
-        const newStatus = currentStepConfig.value as LeadStatus;
-        await this.prisma.lead.update({
-          where: { id: execution.leadId },
-          data: { status: newStatus },
-        });
-      } else if (currentStepConfig.type === 'send_email') {
+      // ── Skip visual graph metadata ─────────────────────────────────────────
+      if (step.type === '__graph__') {
+        await this.advance(execution.id, execution.currentStep);
+        return;
+      }
+
+      // ── Condition check ────────────────────────────────────────────────────
+      if (step.type === 'condition') {
+        const conditionMet = (execution.eventValue ?? '') === step.value;
+        this.logger.log(
+          `Condition "${step.value}" vs event "${execution.eventValue}" → ${conditionMet ? 'OUI' : 'NON'}`,
+        );
+        if (conditionMet) {
+          // Continue to next step (OUI branch actions)
+          await this.advance(execution.id, execution.currentStep);
+        } else {
+          // NON branch — stop execution
+          await this.prisma.workflowExecution.update({
+            where: { id: execution.id },
+            data: { status: 'completed', completedAt: new Date() },
+          });
+        }
+        return;
+      }
+
+      // ── Send email ─────────────────────────────────────────────────────────
+      if (step.type === 'send_email') {
         const lead = await this.prisma.lead.findUnique({ where: { id: execution.leadId } });
-        if (lead && lead.email) {
+        if (lead?.email) {
+          const subject = `Message automatique - AIKOONIC CRM`;
+          const body = step.value.replace(/\{\{prenom\}\}/g, lead.firstName ?? 'Client');
           try {
-            await this.mailService.sendWorkflowEmail(
-              lead.email,
-              'Message automatique - AIKOONIC CRM',
-              currentStepConfig.value
-            );
+            await this.mailService.sendWorkflowEmail(lead.email, subject, body);
             this.logger.log(`✅ Email envoyé à ${lead.email}`);
-          } catch (e) {
-            this.logger.error(`❌ Échec de l'envoi de l'email pour le workflow vers ${lead.email}: ${e.message}`);
+          } catch (e: unknown) {
+            this.logger.error(`❌ Email échec vers ${lead.email}: ${(e as Error).message}`);
           }
         } else {
           this.logger.warn(`⚠️ Lead ${execution.leadId} sans email, skip`);
         }
-      } else if (currentStepConfig.type === 'wait') {
-        // Wait operation: usually you'd schedule it in a task queue (Redis, BullMQ)
-        // Here we just leave it 'running' and let a cron job pick it up later theoretically
-        this.logger.log(`Workflow ${execution.id} is waiting...`);
+        await this.advance(execution.id, execution.currentStep);
         return;
       }
 
-      // If it's not a wait step, increment step and recurse
-      if (currentStepConfig.type !== 'wait') {
-        await this.prisma.workflowExecution.update({
-          where: { id: execution.id },
-          data: { currentStep: execution.currentStep + 1 },
+      // ── Change status ──────────────────────────────────────────────────────
+      if (step.type === 'change_status') {
+        await this.prisma.lead.update({
+          where: { id: execution.leadId },
+          data: { status: step.value as LeadStatus },
         });
-
-        // Recurse to run next step
-        setImmediate(() => {
-          this.executeStep(execution.id).catch((e) =>
-            this.logger.error(`Error going to next step ${execution.id}`, e.stack),
-          );
-        });
+        await this.advance(execution.id, execution.currentStep);
+        return;
       }
-    } catch (error) {
+
+      // ── Wait ───────────────────────────────────────────────────────────────
+      if (step.type === 'wait') {
+        this.logger.log(`Workflow ${execution.id} en attente`);
+        return;
+      }
+
+      // Unknown step type — skip
+      await this.advance(execution.id, execution.currentStep);
+
+    } catch (error: unknown) {
       this.logger.error(
-        `Failed to execute step ${execution.currentStep} for execution ${execution.id}`,
-        error.stack,
+        `Erreur step ${execution.currentStep} pour execution ${execution.id}`,
+        (error as Error).stack,
       );
       await this.prisma.workflowExecution.update({
         where: { id: execution.id },
         data: { status: 'failed' },
       });
     }
+  }
+
+  private async advance(executionId: string, currentStep: number) {
+    await this.prisma.workflowExecution.update({
+      where: { id: executionId },
+      data: { currentStep: currentStep + 1 },
+    });
+    setImmediate(() => this.executeStep(executionId).catch(() => {}));
   }
 }

@@ -218,6 +218,7 @@ model WorkflowExecution {
   leadId      String
   lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   currentStep Int       @default(0)
+  eventValue  String?   // value that triggered the workflow (e.g. tag name)
   status      String    @default("running") // "running" | "completed" | "failed"
   startedAt   DateTime  @default(now())
   completedAt DateTime?
