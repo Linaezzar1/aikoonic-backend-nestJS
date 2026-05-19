@@ -1,35 +1,43 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query, BadRequestException, UseInterceptors, UploadedFile } from '@nestjs/common';
+import {
+  Body, Controller, Delete, Get, Param, Patch, Post,
+  Query, BadRequestException, ForbiddenException,
+  UseGuards, UseInterceptors, UploadedFile,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CrmService } from './crm.service';
 import { CsvParserService } from './import/csv-parser.service';
+import { QuotaService } from './quota.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { FilterLeadsDto } from './dto/filter-leads.dto';
 
+@UseGuards(JwtAuthGuard)
 @Controller('leads')
 export class CrmController {
   constructor(
     private readonly crmService: CrmService,
     private readonly csvParserService: CsvParserService,
+    private readonly quotaService: QuotaService,
   ) {}
 
-  private extractTenantId(tenantId: string | undefined): string {
-    if (!tenantId) {
-      throw new BadRequestException('x-tenant-id header is required');
+  private resolveTenantId(user: { tenantId?: string | null }): string {
+    if (!user.tenantId) {
+      throw new ForbiddenException('Onboarding not completed. Please create your company profile first.');
     }
-    return tenantId;
+    return user.tenantId;
   }
 
   @Post('import')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } })) // 5MB limit
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async importLeads(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @UploadedFile() file: Express.Multer.File,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    if (!file) {
-      throw new BadRequestException('No file uploaded');
-    }
+    const tid = this.resolveTenantId(user);
+    await this.quotaService.checkAndLog(tid, 'lead_import');
+    if (!file) throw new BadRequestException('No file uploaded');
 
     const isCsv = file.mimetype === 'text/csv' || file.originalname.endsWith('.csv');
     const isExcel =
@@ -38,7 +46,6 @@ export class CrmController {
       file.originalname.match(/\.xlsx?$/);
 
     let parseResult: { leads: CreateLeadDto[]; errors: string[] };
-
     if (isCsv) {
       parseResult = await this.csvParserService.parseCSV(file.buffer);
     } else if (isExcel) {
@@ -47,79 +54,69 @@ export class CrmController {
       throw new BadRequestException('Invalid file type. Only CSV and Excel files are allowed.');
     }
 
-    // Call service to do insertion
     const importResult = await this.crmService.importLeads(tid, parseResult.leads);
-
-    // Merge parsing errors with insertion errors
     importResult.errors = [...parseResult.errors, ...importResult.errors];
-
     return importResult;
   }
 
   @Post()
   async createLead(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Body() createLeadDto: CreateLeadDto,
   ) {
-    const tid = this.extractTenantId(tenantId);
+    const tid = this.resolveTenantId(user);
+    await this.quotaService.checkAndLog(tid, 'lead_create');
     return this.crmService.createLead(tid, createLeadDto);
   }
 
   @Get()
   async findAllLeads(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Query() filterLeadsDto: FilterLeadsDto,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.findAllLeads(tid, filterLeadsDto);
+    return this.crmService.findAllLeads(this.resolveTenantId(user), filterLeadsDto);
   }
 
   @Get(':id')
   async findLeadById(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.findLeadById(tid, id);
+    return this.crmService.findLeadById(this.resolveTenantId(user), id);
   }
 
   @Patch(':id')
   async updateLead(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
     @Body() updateLeadDto: UpdateLeadDto,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.updateLead(tid, id, updateLeadDto);
+    return this.crmService.updateLead(this.resolveTenantId(user), id, updateLeadDto);
   }
 
   @Delete(':id')
   async deleteLead(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.deleteLead(tid, id);
+    return this.crmService.deleteLead(this.resolveTenantId(user), id);
   }
 
   @Post(':id/tags')
   async assignTagsToLead(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
     @Body() body: { tagIds: string[] },
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.assignTagsToLead(tid, id, body.tagIds);
+    return this.crmService.assignTagsToLead(this.resolveTenantId(user), id, body.tagIds);
   }
 
   @Delete(':id/tags/:tagId')
   async removeTagFromLead(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
     @Param('tagId') tagId: string,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.removeTagFromLead(tid, id, tagId);
+    return this.crmService.removeTagFromLead(this.resolveTenantId(user), id, tagId);
   }
 }
-

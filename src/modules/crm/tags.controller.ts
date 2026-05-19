@@ -1,39 +1,39 @@
-import { Body, Controller, Delete, Get, Headers, Param, Post, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, ForbiddenException, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CrmService } from './crm.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 
+@UseGuards(JwtAuthGuard)
 @Controller('tags')
 export class TagsController {
   constructor(private readonly crmService: CrmService) {}
 
-  private extractTenantId(tenantId: string | undefined): string {
-    if (!tenantId) {
-      throw new BadRequestException('x-tenant-id header is required');
+  private resolveTenantId(user: { tenantId?: string | null }): string {
+    if (!user.tenantId) {
+      throw new ForbiddenException('Onboarding not completed. Please create your company profile first.');
     }
-    return tenantId;
+    return user.tenantId;
   }
 
   @Post()
   async createTag(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Body() createTagDto: CreateTagDto,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.createTag(tid, createTagDto);
+    return this.crmService.createTag(this.resolveTenantId(user), createTagDto);
   }
 
   @Get()
-  async findAllTags(@Headers('x-tenant-id') tenantId: string) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.findAllTags(tid);
+  async findAllTags(@CurrentUser() user: { tenantId?: string | null }) {
+    return this.crmService.findAllTags(this.resolveTenantId(user));
   }
 
   @Delete(':id')
   async deleteTag(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.crmService.deleteTag(tid, id);
+    return this.crmService.deleteTag(this.resolveTenantId(user), id);
   }
 }

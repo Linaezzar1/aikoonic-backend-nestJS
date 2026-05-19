@@ -121,16 +121,58 @@ model source_citations {
 }
 
 // ─────────────────────────────────────────
+// AUTH — Utilisateurs et sessions
+// ─────────────────────────────────────────
+
+model User {
+  id            String         @id @default(uuid()) @db.Uuid
+  email         String         @unique @db.VarChar(255)
+  password      String         @db.VarChar(255)
+  firstName     String?        @map("first_name") @db.VarChar(100)
+  lastName      String?        @map("last_name") @db.VarChar(100)
+  role          String         @default("VIEWER") @db.VarChar(20)
+  isActive      Boolean        @default(true) @map("is_active")
+  emailVerified Boolean        @default(false) @map("email_verified")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+  @@index([email], map: "ix_users_email")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  token     String   @unique @db.VarChar(512)
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("refresh_tokens")
+  @@index([userId], map: "ix_refresh_tokens_user_id")
+  @@index([token], map: "ix_refresh_tokens_token")
+}
+
+// ─────────────────────────────────────────
 // TENANT — L'entreprise (cœur du multi-tenant)
+// company_id links this CRM tenant 1:1 to the
+// FastAPI companies table (shared PostgreSQL DB).
 // ─────────────────────────────────────────
 model Tenant {
-  id        String     @id @default(uuid())
-  name      String
-  createdAt DateTime   @default(now())
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(255)
+  userId    String?  @unique @map("user_id") @db.Uuid
+  companyId String?  @unique @map("company_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   leads     Lead[]
   tags      Tag[]
   workflows Workflow[]
+
+  @@map("Tenant")
+  @@index([userId])
 }
 
 // ─────────────────────────────────────────
@@ -270,6 +312,49 @@ model competitors {
   company       companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
 
   @@index([company_id], map: "ix_competitors_company_id")
+}
+
+// ─────────────────────────────────────────
+// SUBSCRIPTIONS — mirrored from FastAPI / Alembic (read-write, same DB)
+// ─────────────────────────────────────────
+
+model plans {
+  id                  String          @id @db.Uuid
+  name                String          @db.VarChar(100)
+  slug                String          @unique @db.VarChar(50)
+  price_monthly_cents Int
+  features            Json
+  is_active           Boolean         @default(true)
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+
+  subscriptions subscriptions[]
+}
+
+model subscriptions {
+  id          String    @id @db.Uuid
+  company_id  String    @db.Uuid
+  plan_id     String    @db.Uuid
+  status      String    @db.VarChar(20)
+  period_type String    @db.VarChar(20)
+  started_at  DateTime  @default(now()) @db.Timestamptz(6)
+  ends_at     DateTime? @db.Timestamptz(6)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+
+  plan plans @relation(fields: [plan_id], references: [id])
+
+  @@index([company_id])
+  @@index([status])
+}
+
+model usage_logs {
+  id           String   @id @db.Uuid
+  company_id   String   @db.Uuid
+  feature_key  String   @db.VarChar(100)
+  period_start DateTime @db.Date
+  used_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([company_id])
+  @@index([feature_key])
 }
 
 model brand_assets {
