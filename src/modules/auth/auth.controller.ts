@@ -22,18 +22,50 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 const RT_COOKIE = 'aikoonic_rt';
 const RT_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 
+/**
+ * Cookie scope.
+ *
+ * Production setup:
+ *   - Frontend on https://aikoonic.codes
+ *   - NestJS on   https://api.aikoonic.codes (subdomain)
+ * Without a parent-domain cookie, NestJS's Set-Cookie is scoped to
+ * api.aikoonic.codes and the Next.js middleware on aikoonic.codes cannot see
+ * it — login succeeds but middleware redirects to /login because no session.
+ *
+ * Configure via env:
+ *   COOKIE_DOMAIN=.aikoonic.codes   → cookie visible to all subdomains
+ *   COOKIE_SAMESITE=none            → required when frontend and API are
+ *                                     different sites (and Secure must be true)
+ *   COOKIE_SECURE=true              → forced in production
+ *
+ * Local dev (frontend + backend both on http://localhost): leave these unset,
+ * the defaults (host-only, SameSite=Lax, Secure=false) work fine.
+ */
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE as
+  | 'lax'
+  | 'strict'
+  | 'none'
+  | undefined) ?? 'lax';
+const COOKIE_SECURE =
+  process.env.COOKIE_SECURE === 'true' || process.env.NODE_ENV === 'production';
+
 function setRefreshCookie(res: Response, token: string) {
   res.cookie(RT_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: COOKIE_SECURE,
+    sameSite: COOKIE_SAMESITE,
     path: '/',
     maxAge: RT_MAX_AGE_MS,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
 }
 
 function clearRefreshCookie(res: Response) {
-  res.clearCookie(RT_COOKIE, { path: '/' });
+  res.clearCookie(RT_COOKIE, {
+    path: '/',
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
+  });
 }
 
 @Controller('auth')
