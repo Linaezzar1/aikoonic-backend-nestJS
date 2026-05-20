@@ -75,11 +75,65 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: stored.userId } });
     if (!user || !user.isActive) throw new UnauthorizedException('User not found');
 
-    // Rotate atomically: delete old, then issue new. If issue fails, the old
-    // token is already gone — the user will re-login. This is by design (no
-    // dangling refresh tokens).
-    await this.prisma.refreshToken.delete({ where: { id: stored.id } }).catch(() => null);
-    return this._issueTokens(user);
+    // No rotation on refresh — we use a sliding-expiration policy.
+    //
+    // Rationale: token rotation is the textbook approach but causes false
+    // logouts under three common scenarios:
+    //   1. Page reload while React StrictMode cancels the in-flight request
+    //      via AbortController → cookie is destroyed before client sees the
+    //      response, next reload finds an unknown token → 401.
+    //   2. Multiple tabs open: any tab that wakes up tries to refresh; the
+    //      second tab finds the token already rotated → 401.
+    //   3. Two requests in parallel hitting a 401 (e.g. dashboard + sidebar
+    //      widgets) → race between both refresh calls.
+    //
+    // Trade-off: a refresh token can be replayed for the rest of its TTL
+    // (~7 days). For an MVP this is acceptable. Tighten by adding a
+    // per-token usage counter, IP / UA fingerprint, or device pairing later.
+    return this._issueTokensReusingRefresh(user, stored.token);
+  }
+
+  /**
+   * Re-issue access + refresh tokens but keep the EXISTING refresh token row
+   * in DB (just extend its expiry). Avoids the rotation race described in
+   * `refresh()`.
+   */
+  private async _issueTokensReusingRefresh(
+    user: { id: string; email: string; role: string; firstName: string | null; lastName: string | null },
+    existingRefreshToken: string,
+  ): Promise<IssuedTokens> {
+    const tenantId = await this._resolveOrCreateTenant(user.id);
+    const jwtSecret = this.config.get<string>('JWT_SECRET');
+    const accessExpiresIn = this.config.get<string>('JWT_EXPIRES_IN') || '900';
+    const refreshExpiresInSec = parseInt(
+      this.config.get<string>('JWT_REFRESH_EXPIRES_IN') || '604800',
+      10,
+    );
+
+    const accessToken = this.jwtService.sign(
+      { sub: user.id, email: user.email, role: user.role, tenantId, type: 'access' },
+      { secret: jwtSecret, expiresIn: accessExpiresIn as any },
+    );
+
+    // Sliding window: bump the existing refresh token's expiry forward.
+    const expiresAt = new Date(Date.now() + refreshExpiresInSec * 1000);
+    await this.prisma.refreshToken.update({
+      where: { token: existingRefreshToken },
+      data: { expiresAt },
+    });
+
+    return {
+      accessToken,
+      refreshToken: existingRefreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        tenantId,
+      },
+    };
   }
 
   async logout(token: string): Promise<{ message: string }> {
