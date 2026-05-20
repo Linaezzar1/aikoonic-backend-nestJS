@@ -13,6 +13,18 @@ import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
+// Converts "7d" → 604800, "15m" → 900, "1h" → 3600, or plain "604800" → 604800.
+function parseExpiresInSec(value: string): number {
+  const match = value.match(/^(\d+)([smhd]?)$/);
+  if (!match) return 604800;
+  const n = parseInt(match[1], 10);
+  const unit = match[2];
+  if (unit === 'm') return n * 60;
+  if (unit === 'h') return n * 3600;
+  if (unit === 'd') return n * 86400;
+  return n; // plain seconds or no unit
+}
+
 export interface AuthenticatedUser {
   id: string;
   email: string;
@@ -105,9 +117,8 @@ export class AuthService {
     const tenantId = await this._resolveOrCreateTenant(user.id);
     const jwtSecret = this.config.get<string>('JWT_SECRET');
     const accessExpiresIn = this.config.get<string>('JWT_EXPIRES_IN') || '900';
-    const refreshExpiresInSec = parseInt(
+    const refreshExpiresInSec = parseExpiresInSec(
       this.config.get<string>('JWT_REFRESH_EXPIRES_IN') || '604800',
-      10,
     );
 
     const accessToken = this.jwtService.sign(
@@ -279,9 +290,8 @@ export class AuthService {
     const base = { sub: user.id, email: user.email, role: user.role, tenantId };
     const jwtSecret = this.config.get<string>('JWT_SECRET');
     const accessExpiresIn = this.config.get<string>('JWT_EXPIRES_IN') || '900';
-    const refreshExpiresInSec = parseInt(
+    const refreshExpiresInSec = parseExpiresInSec(
       this.config.get<string>('JWT_REFRESH_EXPIRES_IN') || '604800',
-      10,
     );
 
     const accessToken = this.jwtService.sign(
