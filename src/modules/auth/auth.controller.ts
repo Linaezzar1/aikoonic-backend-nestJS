@@ -20,6 +20,15 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 const RT_COOKIE = 'aikoonic_rt';
+/**
+ * Non-HttpOnly marker cookie. Set/cleared alongside the HttpOnly refresh
+ * cookie so the frontend can tell — without an API round-trip — whether
+ * there's an existing session to restore. Frontends that don't see this
+ * cookie skip the initial /auth/refresh entirely (no 401 noise in the
+ * console for anonymous visitors). This is a UX hint, NOT auth: it carries
+ * no real authority — only the HttpOnly refresh token does.
+ */
+const SESSION_COOKIE = 'aikoonic_session';
 const RT_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 
 /**
@@ -59,10 +68,24 @@ function setRefreshCookie(res: Response, token: string) {
     maxAge: RT_MAX_AGE_MS,
     ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
+  // Companion non-HttpOnly marker — readable by the frontend so it knows
+  // whether to bother calling /auth/refresh on page load.
+  res.cookie(SESSION_COOKIE, '1', {
+    httpOnly: false,
+    secure: COOKIE_SECURE,
+    sameSite: COOKIE_SAMESITE,
+    path: '/',
+    maxAge: RT_MAX_AGE_MS,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
+  });
 }
 
 function clearRefreshCookie(res: Response) {
   res.clearCookie(RT_COOKIE, {
+    path: '/',
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
+  });
+  res.clearCookie(SESSION_COOKIE, {
     path: '/',
     ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
