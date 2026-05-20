@@ -1,59 +1,58 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Headers, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ForbiddenException } from '@nestjs/common';
 import { WorkflowsService } from './workflows.service';
 import { CreateWorkflowDto } from './dto/create-workflow.dto';
 import { UpdateWorkflowDto } from './dto/update-workflow.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PremiumGuard } from '../../common/guards/premium.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
+@UseGuards(JwtAuthGuard, PremiumGuard)
 @Controller('workflows')
 export class WorkflowsController {
   constructor(private readonly workflowsService: WorkflowsService) {}
 
-  private extractTenantId(tenantId: string | undefined): string {
-    if (!tenantId) {
-      throw new BadRequestException('x-tenant-id header is required');
+  private resolveTenantId(user: { tenantId?: string | null }): string {
+    if (!user.tenantId) {
+      throw new ForbiddenException('Onboarding not completed. Please create your company profile first.');
     }
-    return tenantId;
+    return user.tenantId;
   }
 
   @Post()
   create(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Body() dto: CreateWorkflowDto,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.workflowsService.create(tid, dto);
+    return this.workflowsService.create(this.resolveTenantId(user), dto);
   }
 
   @Get()
-  findAll(@Headers('x-tenant-id') tenantId: string) {
-    const tid = this.extractTenantId(tenantId);
-    return this.workflowsService.findAll(tid);
+  findAll(@CurrentUser() user: { tenantId?: string | null }) {
+    return this.workflowsService.findAll(this.resolveTenantId(user));
   }
 
   @Get(':id')
   findOne(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.workflowsService.findOne(tid, id);
+    return this.workflowsService.findOne(this.resolveTenantId(user), id);
   }
 
   @Patch(':id')
   update(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
     @Body() dto: UpdateWorkflowDto,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.workflowsService.update(tid, id, dto);
+    return this.workflowsService.update(this.resolveTenantId(user), id, dto);
   }
 
   @Delete(':id')
   remove(
-    @Headers('x-tenant-id') tenantId: string,
+    @CurrentUser() user: { tenantId?: string | null },
     @Param('id') id: string,
   ) {
-    const tid = this.extractTenantId(tenantId);
-    return this.workflowsService.remove(tid, id);
+    return this.workflowsService.remove(this.resolveTenantId(user), id);
   }
 }

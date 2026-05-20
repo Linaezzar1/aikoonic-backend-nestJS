@@ -5,11 +5,12 @@ import { WorkflowEngineService } from './workflow-engine.service';
 import { WorkflowSchedulerService } from './workflow-scheduler.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MailModule } from '../../mail/mail.module';
+import { PremiumGuard } from '../../common/guards/premium.guard';
 
 @Module({
   imports: [PrismaModule, MailModule],
   controllers: [WorkflowsController],
-  providers: [WorkflowsService, WorkflowEngineService, WorkflowSchedulerService],
+  providers: [WorkflowsService, WorkflowEngineService, WorkflowSchedulerService, PremiumGuard],
   exports: [WorkflowsService, WorkflowEngineService],
 })
 export class WorkflowsModule {}

@@ -28,9 +28,11 @@ export class QuotaService {
     });
     if (!sub) return;
 
-    const featureConfig = (sub.plan.features as Record<string, { monthly?: number }>)[featureKey];
-    const limit: number | undefined = featureConfig?.monthly;
-    if (limit === undefined) return; // feature not quota-tracked on this plan
+    const featureConfig = (sub.plan.features as Record<string, { monthly?: number | null }>)[featureKey];
+    const limit: number | null | undefined = featureConfig?.monthly;
+    // null  = unlimited (Premium "sans limites") — skip quota check entirely
+    // undefined = feature not tracked on this plan — also skip
+    if (limit == null) return;
 
     const periodStart = new Date();
     periodStart.setUTCDate(1);
