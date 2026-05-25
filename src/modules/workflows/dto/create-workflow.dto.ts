@@ -3,7 +3,11 @@ import { Type } from 'class-transformer';
 
 export class WorkflowStepDto {
   @IsString()
-  @IsIn(['send_email', 'change_status', 'wait', 'condition', '__graph__'])
+  @IsIn([
+    'send_email', 'change_status', 'wait', 'condition', '__graph__',
+    'check_tag', 'check_status', 'check_field',
+    'add_tag', 'remove_tag', 'create_note',
+  ])
   type: string;
 
   @IsString()
@@ -12,6 +16,10 @@ export class WorkflowStepDto {
   @IsInt()
   @Min(0)
   delayDays: number;
+
+  @IsInt()
+  @IsOptional()
+  falseStep?: number;
 }
 
 export class CreateWorkflowDto {
@@ -20,7 +28,7 @@ export class CreateWorkflowDto {
   name: string;
 
   @IsString()
-  @IsIn(['tag_added', 'status_changed', 'scheduled'])
+  @IsIn(['tag_added', 'tag_removed', 'status_changed', 'contact_created', 'scheduled'])
   trigger: string;
 
   @IsString()

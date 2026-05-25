@@ -10,6 +10,7 @@ import { UsersModule } from './modules/users/users.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { MailModule } from './mail/mail.module';
+import { MailReplyCheckerModule } from './mail/mail-reply-checker.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { MailModule } from './mail/mail.module';
     CrmModule,
     WorkflowsModule,
     MailModule,
+    MailReplyCheckerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

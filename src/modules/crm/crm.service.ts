@@ -73,7 +73,7 @@ export class CrmService {
       );
     }
 
-    return this.prisma.lead.create({
+    const lead = await this.prisma.lead.create({
       data: {
         ...leadData,
         tenantId,
@@ -88,6 +88,10 @@ export class CrmService {
         tags: true,
       },
     });
+
+    this.workflowEngine.triggerWorkflows('contact_created', lead.email, lead.id, tenantId);
+
+    return lead;
   }
 
   async findAllLeads(tenantId: string, filters: FilterLeadsDto) {
@@ -277,8 +281,9 @@ export class CrmService {
 
   async removeTagFromLead(tenantId: string, leadId: string, tagId: string) {
     const lead = await this.findLeadById(tenantId, leadId);
+    const removedTag = lead.tags.find((t) => t.id === tagId);
 
-    return this.prisma.lead.update({
+    const updatedLead = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         tags: {
@@ -287,5 +292,11 @@ export class CrmService {
       },
       include: { tags: true },
     });
+
+    if (removedTag) {
+      this.workflowEngine.triggerWorkflows('tag_removed', removedTag.label, leadId, tenantId);
+    }
+
+    return updatedLead;
   }
 }
