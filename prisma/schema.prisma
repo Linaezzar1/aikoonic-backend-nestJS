@@ -272,6 +272,24 @@ model WorkflowExecution {
   @@index([status, resumeAt])
 }
 
+// ─────────────────────────────────────────
+// NOTIFICATIONS — Alertes temps réel
+// Table créée par Alembic (Python backend)
+// ─────────────────────────────────────────
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(200)
+  message   String   @db.VarChar(500)
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("notifications")
+  @@index([userId], map: "ix_notifications_user_id")
+  @@index([userId, isRead], map: "ix_notifications_user_id_is_read")
+}
+
 model companies {
   id                String       @id @db.Uuid
   user_id           String       @db.Uuid

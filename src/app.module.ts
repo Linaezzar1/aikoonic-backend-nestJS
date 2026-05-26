@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { MailModule } from './mail/mail.module';
 import { MailReplyCheckerModule } from './mail/mail-reply-checker.module';
 
@@ -22,6 +23,7 @@ import { MailReplyCheckerModule } from './mail/mail-reply-checker.module';
     UsersModule,
     CrmModule,
     WorkflowsModule,
+    NotificationsModule,
     MailModule,
     MailReplyCheckerModule,
   ],
