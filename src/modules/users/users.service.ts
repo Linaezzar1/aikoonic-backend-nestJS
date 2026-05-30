@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../core/redis/redis.service';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private redis: RedisService,
+  ) {}
 
   async findById(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
@@ -29,5 +33,15 @@ export class UsersService {
     const user = await this.findById(id);
     const { password, ...profile } = user;
     return profile;
+  }
+
+  async deactivate(id: string) {
+    await this.prisma.user.update({ where: { id }, data: { isActive: false } });
+    await this.redis.setBanned(id);
+  }
+
+  async reactivate(id: string) {
+    await this.prisma.user.update({ where: { id }, data: { isActive: true } });
+    await this.redis.deleteBanned(id);
   }
 }

@@ -12,6 +12,8 @@ import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { MailModule } from './mail/mail.module';
 import { MailReplyCheckerModule } from './mail/mail-reply-checker.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { RedisModule } from './core/redis/redis.module';
 
 @Module({
   imports: [
@@ -19,6 +21,7 @@ import { MailReplyCheckerModule } from './mail/mail-reply-checker.module';
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
+    RedisModule,
     AuthModule,
     UsersModule,
     CrmModule,
@@ -26,6 +29,7 @@ import { MailReplyCheckerModule } from './mail/mail-reply-checker.module';
     NotificationsModule,
     MailModule,
     MailReplyCheckerModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

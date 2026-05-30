@@ -346,25 +346,29 @@ model plans {
   price_monthly_cents Int
   features            Json
   is_active           Boolean         @default(true)
+  stripe_price_id     String?         @db.VarChar(255)
   created_at          DateTime        @default(now()) @db.Timestamptz(6)
 
   subscriptions subscriptions[]
 }
 
 model subscriptions {
-  id          String    @id @db.Uuid
-  company_id  String    @db.Uuid
-  plan_id     String    @db.Uuid
-  status      String    @db.VarChar(20)
-  period_type String    @db.VarChar(20)
-  started_at  DateTime  @default(now()) @db.Timestamptz(6)
-  ends_at     DateTime? @db.Timestamptz(6)
-  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  id                     String    @id @db.Uuid
+  company_id             String    @db.Uuid
+  plan_id                String    @db.Uuid
+  status                 String    @db.VarChar(20)
+  period_type            String    @db.VarChar(20)
+  stripe_customer_id     String?   @db.VarChar(255)
+  stripe_subscription_id String?   @db.VarChar(255)
+  started_at             DateTime  @default(now()) @db.Timestamptz(6)
+  ends_at                DateTime? @db.Timestamptz(6)
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
 
   plan plans @relation(fields: [plan_id], references: [id])
 
   @@index([company_id])
   @@index([status])
+  @@index([stripe_subscription_id])
 }
 
 model usage_logs {
@@ -376,6 +380,21 @@ model usage_logs {
 
   @@index([company_id])
   @@index([feature_key])
+}
+
+model webhook_events {
+  id               String   @id @db.Uuid
+  stripe_event_id  String   @unique @db.VarChar(255)
+  event_type       String   @db.VarChar(100)
+  status           String   @db.VarChar(20)
+  error_message    String?
+  livemode         Boolean  @default(false)
+  raw_payload      Json?
+  processed_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([stripe_event_id])
+  @@index([event_type])
+  @@index([status])
 }
 
 model brand_assets {

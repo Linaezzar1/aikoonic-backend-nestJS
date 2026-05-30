@@ -1,5 +1,5 @@
 import { IsString, IsNotEmpty, IsBoolean, IsOptional, ValidateNested, IsIn, IsInt, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export class WorkflowStepDto {
   @IsString()
@@ -13,10 +13,12 @@ export class WorkflowStepDto {
   @IsString()
   value: string;
 
+  @Transform(({ value }) => Math.round(Number(value ?? 0)))
   @IsInt()
   @Min(0)
   delayDays: number;
 
+  @Transform(({ value }) => value != null ? Math.round(Number(value)) : undefined)
   @IsInt()
   @IsOptional()
   falseStep?: number;
