@@ -325,7 +325,7 @@ model companies {
   target_audience   String?
   main_objective    String?
   tone_of_voice     String?       @db.VarChar(100)
-  platforms         String[]
+  platforms         Unsupported("platform_type[]")?
   logo_url          String?
   logo_step_done    Boolean       @default(false)
   is_completed      Boolean       @default(false)
