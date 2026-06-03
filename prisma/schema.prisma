@@ -1,13 +1,21 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["public", "crm"]
 }
+
+// ─────────────────────────────────────────
+// FastAPI tables mirrored in public schema (read-write, same DB)
+// ─────────────────────────────────────────
 
 model alembic_version {
   version_num String @id(map: "alembic_version_pkc") @db.VarChar(32)
+
+  @@schema("public")
 }
 
 model calendar_entries {
@@ -29,6 +37,7 @@ model calendar_entries {
   generated_contents  generated_contents[]
 
   @@index([calendar_id], map: "ix_calendar_entries_calendar_id")
+  @@schema("public")
 }
 
 model generated_contents {
@@ -59,6 +68,7 @@ model generated_contents {
   @@index([calendar_id], map: "ix_generated_contents_calendar_id")
   @@index([export_batch_id], map: "ix_generated_contents_export_batch_id")
   @@index([user_id], map: "ix_generated_contents_user_id")
+  @@schema("public")
 }
 
 model marketing_calendars {
@@ -78,6 +88,7 @@ model marketing_calendars {
   scraped_sources      scraped_sources[]
 
   @@index([user_id], map: "ix_marketing_calendars_user_id")
+  @@schema("public")
 }
 
 model scraped_sources {
@@ -104,6 +115,7 @@ model scraped_sources {
   @@index([calendar_id], map: "ix_scraped_sources_calendar_id")
   @@index([expires_at], map: "ix_scraped_sources_expires_at")
   @@index([url], map: "ix_scraped_sources_url")
+  @@schema("public")
 }
 
 model source_citations {
@@ -118,6 +130,7 @@ model source_citations {
 
   @@index([generated_content_id], map: "ix_source_citations_generated_content_id")
   @@index([source_id], map: "ix_source_citations_source_id")
+  @@schema("public")
 }
 
 // ─────────────────────────────────────────
@@ -140,6 +153,7 @@ model User {
 
   @@map("users")
   @@index([email], map: "ix_users_email")
+  @@schema("public")
 }
 
 model RefreshToken {
@@ -153,6 +167,7 @@ model RefreshToken {
   @@map("refresh_tokens")
   @@index([userId], map: "ix_refresh_tokens_user_id")
   @@index([token], map: "ix_refresh_tokens_token")
+  @@schema("public")
 }
 
 // ─────────────────────────────────────────
@@ -173,6 +188,7 @@ model Tenant {
 
   @@map("Tenant")
   @@index([userId])
+  @@schema("crm")
 }
 
 // ─────────────────────────────────────────
@@ -199,6 +215,7 @@ model Lead {
 
   @@unique([email, tenantId])
   @@index([tenantId])
+  @@schema("crm")
 }
 
 enum LeadStatus {
@@ -206,6 +223,8 @@ enum LeadStatus {
   QUALIFIE
   CONVERTI
   INACTIF
+
+  @@schema("crm")
 }
 
 enum LeadSource {
@@ -213,6 +232,8 @@ enum LeadSource {
   CSV_IMPORT
   FORMULAIRE
   RESEAU_SOCIAL
+
+  @@schema("crm")
 }
 
 // ─────────────────────────────────────────
@@ -221,7 +242,7 @@ enum LeadSource {
 model Tag {
   id       String  @id @default(uuid())
   label    String
-  color    String? 
+  color    String?
 
   tenantId String
   tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -232,6 +253,7 @@ model Tag {
 
   @@unique([label, tenantId])
   @@index([tenantId])
+  @@schema("crm")
 }
 
 // ─────────────────────────────────────────
@@ -249,8 +271,9 @@ model Workflow {
   executions   WorkflowExecution[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  
+
   @@index([tenantId])
+  @@schema("crm")
 }
 
 model WorkflowExecution {
@@ -270,6 +293,7 @@ model WorkflowExecution {
   @@index([workflowId])
   @@index([leadId])
   @@index([status, resumeAt])
+  @@schema("crm")
 }
 
 // ─────────────────────────────────────────
@@ -288,27 +312,29 @@ model Notification {
   @@map("notifications")
   @@index([userId], map: "ix_notifications_user_id")
   @@index([userId, isRead], map: "ix_notifications_user_id_is_read")
+  @@schema("public")
 }
 
 model companies {
-  id                String       @id @db.Uuid
-  user_id           String       @db.Uuid
-  company_name      String?      @db.VarChar(255)
-  activity_sector   String?      @db.VarChar(255)
-  city              String?      @db.VarChar(255)
-  country           String?      @db.VarChar(255)
+  id                String        @id @db.Uuid
+  user_id           String        @db.Uuid
+  company_name      String?       @db.VarChar(255)
+  activity_sector   String?       @db.VarChar(255)
+  city              String?       @db.VarChar(255)
+  country           String?       @db.VarChar(255)
   target_audience   String?
   main_objective    String?
-  tone_of_voice     String?      @db.VarChar(100)
+  tone_of_voice     String?       @db.VarChar(100)
   platforms         Json?
   logo_url          String?
-  logo_step_done    Boolean      @default(false)
-  is_completed      Boolean      @default(false)
+  logo_step_done    Boolean       @default(false)
+  is_completed      Boolean       @default(false)
   marketing_profile Json?
-  created_at        DateTime     @default(now()) @db.Timestamptz(6)
+  created_at        DateTime      @default(now()) @db.Timestamptz(6)
   competitors       competitors[]
 
   @@index([user_id], map: "ix_companies_user_id")
+  @@schema("public")
 }
 
 model onboarding_messages {
@@ -319,6 +345,7 @@ model onboarding_messages {
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([user_id], map: "ix_onboarding_messages_user_id")
+  @@schema("public")
 }
 
 model competitors {
@@ -333,6 +360,7 @@ model competitors {
   company       companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
 
   @@index([company_id], map: "ix_competitors_company_id")
+  @@schema("public")
 }
 
 // ─────────────────────────────────────────
@@ -350,6 +378,8 @@ model plans {
   created_at          DateTime        @default(now()) @db.Timestamptz(6)
 
   subscriptions subscriptions[]
+
+  @@schema("public")
 }
 
 model subscriptions {
@@ -369,6 +399,7 @@ model subscriptions {
   @@index([company_id])
   @@index([status])
   @@index([stripe_subscription_id])
+  @@schema("public")
 }
 
 model usage_logs {
@@ -380,6 +411,7 @@ model usage_logs {
 
   @@index([company_id])
   @@index([feature_key])
+  @@schema("public")
 }
 
 model webhook_events {
@@ -395,6 +427,7 @@ model webhook_events {
   @@index([stripe_event_id])
   @@index([event_type])
   @@index([status])
+  @@schema("public")
 }
 
 model brand_assets {
@@ -408,6 +441,7 @@ model brand_assets {
   created_at  DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([user_id], map: "ix_brand_assets_user_id")
+  @@schema("public")
 }
 
 model content_examples {
@@ -428,11 +462,12 @@ model content_examples {
   has_local_anchor Boolean  @default(false)
   has_cultural_ref Boolean  @default(false)
   source           String   @db.VarChar(20)
-  embedding        Unsupported("vector(384)")? 
+  embedding        Unsupported("vector(384)")?
   created_at       DateTime @default(now()) @db.Timestamptz(6)
   updated_at       DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([embedding], map: "ix_content_examples_embedding")
   @@index([hashtags], map: "ix_content_examples_hashtags")
   @@index([sector, platform, source], map: "ix_content_examples_sector_platform_source")
+  @@schema("public")
 }
