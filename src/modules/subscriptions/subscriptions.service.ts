@@ -204,20 +204,11 @@ export class SubscriptionsService {
     });
     if (!sub) throw new ForbiddenException('No active subscription.');
 
+    const periodStart = new Date(new Date().toISOString().slice(0, 7) + '-01');
     const features = (sub.plan.features as Record<string, any>) ?? {};
     const meta = features[featureKey];
     const limit: number | null = typeof meta === 'object' ? meta?.monthly ?? null : null;
 
-    // brand_assets uses a storage limit (total stored), not a monthly upload quota.
-    if (featureKey === 'brand_assets') {
-      const used = await this.prisma.brand_assets.count({ where: { user_id: userId } });
-      if (limit !== null && used >= limit) {
-        return { allowed: false, used, limit };
-      }
-      return { allowed: true, used: used + 1, limit };
-    }
-
-    const periodStart = new Date(new Date().toISOString().slice(0, 7) + '-01');
     const used = await this.prisma.usage_logs.count({
       where: {
         company_id: company.id,
@@ -259,13 +250,10 @@ export class SubscriptionsService {
     const usageMap: Record<string, number> = {};
     for (const r of rows) usageMap[r.feature_key] = r._count.id;
 
-    // brand_assets is a storage limit — count actual stored assets, not monthly logs.
-    const brandAssetCount = await this.prisma.brand_assets.count({ where: { user_id: userId } });
-
     const features = (sub.plan.features as Record<string, any>) ?? {};
     const usage = Object.entries(features).map(([key, meta]) => {
       const limit: number | null = typeof meta === 'object' ? meta?.monthly ?? null : null;
-      const used = key === 'brand_assets' ? brandAssetCount : (usageMap[key] ?? 0);
+      const used = usageMap[key] ?? 0;
       return { feature_key: key, used, limit, percent: limit ? Math.round((used / limit) * 1000) / 10 : null };
     });
 
