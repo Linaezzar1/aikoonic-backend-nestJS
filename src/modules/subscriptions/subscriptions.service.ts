@@ -1,4 +1,4 @@
-import {
+  import {
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -221,15 +221,7 @@ export class SubscriptionsService {
       return { allowed: false, used, limit };
     }
 
-    await this.prisma.usage_logs.create({
-      data: {
-        id: crypto.randomUUID(),
-        company_id: company.id,
-        feature_key: featureKey,
-        period_start: periodStart,
-      },
-    });
-    return { allowed: true, used: used + 1, limit };
+    return { allowed: true, used, limit };
   }
 
   async getUsageSummary(userId: string) {
