@@ -60,15 +60,18 @@ export class WorkflowEngineService {
 
   // Resume a waiting execution (called by scheduler after wait period elapses)
   async resumeExecution(executionId: string) {
+    // Atomic claim: only the first concurrent caller gets count=1 — prevents
+    // double-execution when scheduler and IMAP checker fire at the same time.
+    const claimed = await this.prisma.workflowExecution.updateMany({
+      where: { id: executionId, status: 'waiting' },
+      data: { status: 'running' } as any,
+    });
+    if (claimed.count === 0) return; // Already running or completed
+
     const execution = await this.prisma.workflowExecution.findUnique({
       where: { id: executionId },
     });
-    if (!execution || execution.status !== 'waiting') return;
-
-    await this.prisma.workflowExecution.update({
-      where: { id: executionId },
-      data: { status: 'running' } as any,
-    });
+    if (!execution) return;
 
     const nodeId = (execution as any).currentNodeId as string | null;
     await this.executeFromNode(executionId, nodeId);
@@ -157,13 +160,20 @@ export class WorkflowEngineService {
 
       // ── wait ──────────────────────────────────────────────────────────────
       if (stepType === 'wait') {
-        const days = Number((node.data.delayDays as number) ?? (node.data.value as string) ?? 1) || 1;
-        const resumeAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        const qty = Number((node.data.delayDays as number) ?? (node.data.value as string) ?? 1) || 1;
+        const unit = (node.data.delayUnit as string) ?? 'jours';
+        const msPerUnit: Record<string, number> = {
+          minutes: 60 * 1000,
+          heures: 60 * 60 * 1000,
+          jours: 24 * 60 * 60 * 1000,
+        };
+        const ms = qty * (msPerUnit[unit] ?? msPerUnit.jours);
+        const resumeAt = new Date(Date.now() + ms);
         await this.prisma.workflowExecution.update({
           where: { id: executionId },
           data: { status: 'waiting', resumeAt } as any,
         });
-        this.logger.log(`Execution ${executionId} waiting ${days} day(s) until ${resumeAt.toISOString()}`);
+        this.logger.log(`Execution ${executionId} waiting ${qty} ${unit} until ${resumeAt.toISOString()}`);
         // currentNodeId is already saved — scheduler will resume from here
         return;
       }

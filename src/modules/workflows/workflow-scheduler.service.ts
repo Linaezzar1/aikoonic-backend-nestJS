@@ -12,8 +12,8 @@ export class WorkflowSchedulerService {
     private readonly engine: WorkflowEngineService,
   ) {}
 
-  // Runs every 10 minutes — resumes executions paused by a wait step
-  @Cron('*/10 * * * *')
+  // Runs every minute — supports minute-level wait steps for testing
+  @Cron('* * * * *')
   async resumeWaitingExecutions() {
     const now = new Date();
     const due = await this.prisma.workflowExecution.findMany({
