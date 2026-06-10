@@ -147,12 +147,7 @@ export class WorkflowEngineService {
           const firstName = lead.firstName ?? 'Client';
           const body    = rawValue.replace(/\{\{prenom\}\}/gi, firstName);
           const subject = rawSubject.replace(/\{\{prenom\}\}/gi, firstName);
-          try {
-            await this.mailService.sendWorkflowEmail(lead.email, subject, body);
-            this.logger.log(`Email sent to ${lead.email}`);
-          } catch (e: unknown) {
-            this.logger.error(`Email failed: ${(e as Error).message}`);
-          }
+          await this.mailService.sendWorkflowEmail(lead.email, subject, body);
         }
         await this.advanceToNext(executionId, node.id, graph, lead, eventValue);
         return;
