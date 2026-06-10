@@ -1,11 +1,20 @@
 import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+export interface GeneratedWorkflowStep {
+  type: string;
+  value: string;
+  delayDays: number;
+  delayUnit?: string;
+  yes_steps?: GeneratedWorkflowStep[];
+  no_steps?: GeneratedWorkflowStep[];
+}
+
 export interface GeneratedWorkflow {
   name: string;
   trigger: string;
   triggerValue?: string;
-  steps: Array<{ type: string; value: string; delayDays: number }>;
+  steps: GeneratedWorkflowStep[];
 }
 
 @Injectable()
