@@ -155,7 +155,6 @@ export class MailReplyCheckerService {
             continue;
           }
 
-          this.logger.log(`Reply detected via IMAP from ${fromEmail}`);
           await this.processReply(fromEmail);
           this.processedMessageIds.add(messageId);
         }
