@@ -36,6 +36,7 @@ export class MailService {
         },
         body: JSON.stringify({
           from: process.env.RESEND_FROM ?? 'AIKOONIC CRM <noreply@aikoonic.codes>',
+          reply_to: process.env.GMAIL_USER,
           to: [to],
           subject,
           html,
