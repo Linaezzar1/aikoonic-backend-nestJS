@@ -6,10 +6,11 @@ import { WorkflowSchedulerService } from './workflow-scheduler.service';
 import { WorkflowAiService } from './workflow-ai.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MailModule } from '../../mail/mail.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PremiumGuard } from '../../common/guards/premium.guard';
 
 @Module({
-  imports: [PrismaModule, MailModule],
+  imports: [PrismaModule, MailModule, NotificationsModule],
   controllers: [WorkflowsController],
   providers: [WorkflowsService, WorkflowEngineService, WorkflowSchedulerService, WorkflowAiService, PremiumGuard],
   exports: [WorkflowsService, WorkflowEngineService],

@@ -7,7 +7,7 @@ import {
   Sse,
   Query,
 } from '@nestjs/common';
-import { Observable, interval, from } from 'rxjs';
+import { Observable, timer, from } from 'rxjs';
 import { switchMap, map } from 'rxjs/operators';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -44,14 +44,17 @@ export class NotificationsController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id/read')
-  markAsRead(@Param('id') id: string) {
-    return this.notificationsService.markAsRead(id);
+  markAsRead(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.notificationsService.markAsRead(id, user.id);
   }
 
   /**
    * SSE stream — EventSource can't set Authorization headers, so we accept
    * the JWT as a ?token= query param and verify it manually.
-   * Sends the current unread list every 5 seconds.
+   *
+   * Sends the FULL recent list (read + unread) immediately on connect, then
+   * every 5 seconds. Sending only unread items made read notifications
+   * vanish from the panel instead of showing as "vu".
    */
   @Sse('stream')
   stream(@Query('token') token: string): Observable<MessageEvent> {
@@ -67,8 +70,8 @@ export class NotificationsController {
       });
     }
 
-    return interval(5000).pipe(
-      switchMap(() => from(this.notificationsService.getUnread(userId))),
+    return timer(0, 5000).pipe(
+      switchMap(() => from(this.notificationsService.getAll(userId))),
       map((notifications) => ({ data: JSON.stringify(notifications) } as MessageEvent)),
     );
   }

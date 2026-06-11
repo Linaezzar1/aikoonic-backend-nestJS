@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { ImapFlow } from 'imapflow';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkflowEngineService } from '../modules/workflows/workflow-engine.service';
+import { NotificationsService } from '../modules/notifications/notifications.service';
 
 const REPLY_TAG = 'a_repondu';
 
@@ -18,6 +19,7 @@ export class MailReplyCheckerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly workflowEngine: WorkflowEngineService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   @Cron('*/5 * * * *')
@@ -201,6 +203,16 @@ export class MailReplyCheckerService {
       this.logger.log(
         `Lead "${lead.firstName ?? lead.email}" tagged "${REPLY_TAG}" (replied from ${fromEmail})`,
       );
+
+      const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || lead.email;
+      await this.notifications
+        .notifyTenantOwner(
+          lead.tenantId,
+          'lead_replied',
+          'Un lead a répondu',
+          `${leadName} a répondu à votre email.`,
+        )
+        .catch(() => null); // Notification failure must never block the workflow resume
 
       const waitingExecutions = await this.prisma.workflowExecution.findMany({
         where: { leadId: lead.id, status: 'waiting' },

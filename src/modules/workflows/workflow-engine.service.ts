@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LeadStatus } from '@prisma/client';
 import { MailService } from '../../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 interface GraphNode {
   id: string;
@@ -28,6 +29,7 @@ export class WorkflowEngineService {
   constructor(
     private prisma: PrismaService,
     private mailService: MailService,
+    private notifications: NotificationsService,
   ) {}
 
   async triggerWorkflows(event: string, eventValue: string, leadId: string, tenantId: string) {
@@ -235,6 +237,16 @@ export class WorkflowEngineService {
         where: { id: executionId },
         data: { status: 'failed' },
       });
+      const leadName =
+        [lead?.firstName, lead?.lastName].filter(Boolean).join(' ') || lead?.email || 'un lead';
+      await this.notifications
+        .notifyTenantOwner(
+          lead.tenantId,
+          'workflow_failed',
+          'Workflow échoué',
+          `Le workflow a échoué pour ${leadName} : ${(error as Error).message}`,
+        )
+        .catch(() => null); // Never mask the original failure
     }
   }
 
