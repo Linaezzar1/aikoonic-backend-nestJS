@@ -11,6 +11,8 @@
  * password is updated if one was provided).
  */
 const { PrismaClient } = require('@prisma/client');
+const { Pool } = require('pg');
+const { PrismaPg } = require('@prisma/adapter-pg');
 const bcrypt = require('bcryptjs');
 
 async function main() {
@@ -26,7 +28,10 @@ async function main() {
     process.exit(1);
   }
 
-  const prisma = new PrismaClient();
+  // Same adapter setup as src/prisma/prisma.service.ts (Prisma 7 + pg driver)
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter });
   try {
     const hashed = await bcrypt.hash(password, 12);
     const existing = await prisma.user.findUnique({ where: { email } });
