@@ -11,5 +11,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY prisma ./prisma
 COPY prisma.config.ts ./
+COPY scripts ./scripts
 EXPOSE 3001
 CMD ["node", "dist/main"]
