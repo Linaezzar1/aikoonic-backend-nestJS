@@ -4,6 +4,7 @@ import {
   Get,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UnauthorizedException,
@@ -102,6 +103,35 @@ export class AuthController {
     const data = await this.authService.register(dto);
     setRefreshCookie(res, data.refreshToken);
     return { accessToken: data.accessToken, user: data.user };
+  }
+
+  /**
+   * Email confirmation link target (opened from the verification email).
+   * Verifies the token, flags the email, then 302-redirects to the frontend
+   * login page with a status flag the UI can surface.
+   */
+  @Get('verify-email')
+  async verifyEmail(@Query('token') token: string, @Res() res: Response) {
+    // FRONTEND_URL may hold a comma-separated list — use the first entry only.
+    const frontend = (process.env.FRONTEND_URL ?? 'http://localhost:3000')
+      .split(',')[0]
+      .trim()
+      .replace(/\/$/, '');
+    try {
+      await this.authService.verifyEmail(token);
+      return res.redirect(302, `${frontend}/login?verified=1`);
+    } catch {
+      return res.redirect(302, `${frontend}/login?verified=0`);
+    }
+  }
+
+  /** Re-send the verification email to the authenticated user. */
+  @Post('resend-verification')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  async resendVerification(@CurrentUser() user: { id: string }) {
+    await this.authService.resendVerification(user.id);
+    return { message: 'Verification email sent' };
   }
 
   @Post('login')

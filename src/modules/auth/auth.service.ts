@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../../mail/mail.service';
 import * as bcrypt from 'bcryptjs';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -41,10 +43,13 @@ export interface IssuedTokens {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private config: ConfigService,
+    private mail: MailService,
   ) {}
 
   async register(dto: RegisterDto): Promise<IssuedTokens> {
@@ -62,7 +67,60 @@ export class AuthService {
       },
     });
 
+    // Fire-and-forget: a failed email must never block account creation.
+    void this.sendVerificationEmail(user);
+
     return this._issueTokens(user);
+  }
+
+  // ── Email verification ──────────────────────────────────────────────────────
+
+  /** Sign a short-lived (24 h) verification token and email the confirm link. */
+  private async sendVerificationEmail(user: {
+    id: string;
+    email: string;
+    firstName: string | null;
+  }): Promise<void> {
+    try {
+      const token = this.jwtService.sign(
+        { sub: user.id, email: user.email, type: 'email_verify' },
+        { secret: this.config.get<string>('JWT_SECRET'), expiresIn: '1d' },
+      );
+      // Externally-reachable backend base (incl. the /api2 prefix). On this
+      // server NestJS is served at api.aikoonic.codes/api2 (no api2.* subdomain).
+      const base = this.config.get<string>('PUBLIC_API_URL') ?? 'https://api.aikoonic.codes/api2';
+      const verifyUrl = `${base}/auth/verify-email?token=${encodeURIComponent(token)}`;
+      await this.mail.sendVerificationEmail(user.email, verifyUrl, user.firstName);
+    } catch (e) {
+      this.logger.error(`Failed to send verification email to ${user.email}`, e as Error);
+    }
+  }
+
+  /** Validate a verification token and flag the user's email as verified. */
+  async verifyEmail(token: string): Promise<void> {
+    if (!token) throw new BadRequestException('Lien de vérification invalide.');
+    let payload: { sub?: string; type?: string };
+    try {
+      payload = this.jwtService.verify(token, { secret: this.config.get<string>('JWT_SECRET') });
+    } catch {
+      throw new BadRequestException('Lien de vérification invalide ou expiré.');
+    }
+    if (payload.type !== 'email_verify' || !payload.sub) {
+      throw new BadRequestException('Lien de vérification invalide.');
+    }
+    await this.prisma.user
+      .update({ where: { id: payload.sub }, data: { emailVerified: true } })
+      .catch(() => {
+        throw new BadRequestException('Compte introuvable.');
+      });
+  }
+
+  /** Re-send the verification email (e.g. user lost the first one). */
+  async resendVerification(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+    if (user.emailVerified) return;
+    await this.sendVerificationEmail(user);
   }
 
   async login(dto: LoginDto): Promise<IssuedTokens> {

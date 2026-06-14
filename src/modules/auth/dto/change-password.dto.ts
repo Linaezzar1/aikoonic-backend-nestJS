@@ -1,9 +1,9 @@
 import { IsString, MaxLength, Matches, MinLength } from 'class-validator';
 
 export class ChangePasswordDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
+  @IsString({ message: 'Le mot de passe actuel est requis' })
+  @MinLength(1, { message: 'Le mot de passe actuel est requis' })
+  @MaxLength(128, { message: 'Le mot de passe ne peut pas dépasser 128 caractères' })
   currentPassword: string;
 
   @IsString()
