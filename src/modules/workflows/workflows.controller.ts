@@ -1,36 +1,21 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ForbiddenException } from '@nestjs/common';
-import { IsString, IsNotEmpty } from 'class-validator';
 import { WorkflowsService } from './workflows.service';
-import { WorkflowAiService } from './workflow-ai.service';
 import { CreateWorkflowDto } from './dto/create-workflow.dto';
 import { UpdateWorkflowDto } from './dto/update-workflow.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PremiumGuard } from '../../common/guards/premium.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
-class GenerateWorkflowDto {
-  @IsString() @IsNotEmpty()
-  description!: string;
-}
-
 @UseGuards(JwtAuthGuard, PremiumGuard)
 @Controller('workflows')
 export class WorkflowsController {
-  constructor(
-    private readonly workflowsService: WorkflowsService,
-    private readonly workflowAiService: WorkflowAiService,
-  ) {}
+  constructor(private readonly workflowsService: WorkflowsService) {}
 
   private resolveTenantId(user: { tenantId?: string | null }): string {
     if (!user.tenantId) {
       throw new ForbiddenException('Onboarding not completed. Please create your company profile first.');
     }
     return user.tenantId;
-  }
-
-  @Post('generate')
-  generateWithAi(@Body() dto: GenerateWorkflowDto) {
-    return this.workflowAiService.generateFromDescription(dto.description);
   }
 
   @Post()

@@ -34,15 +34,16 @@ export class QuotaService {
     // undefined = feature not tracked on this plan — also skip
     if (limit == null) return;
 
-    const periodStart = new Date();
-    periodStart.setUTCDate(1);
-    periodStart.setUTCHours(0, 0, 0, 0);
+    // Period anchored to the subscription start day (anniversary billing), NOT
+    // the calendar 1st. This matches subscriptions.service.ts and the FastAPI
+    // backend so all three systems agree on period boundaries.
+    const periodStart = this.currentPeriodStart(sub.started_at);
 
     const used = await this.prisma.usage_logs.count({
       where: {
         company_id: companyId,
         feature_key: featureKey,
-        period_start: { gte: periodStart },
+        used_at: { gte: periodStart },
       },
     });
 
@@ -60,5 +61,17 @@ export class QuotaService {
         period_start: periodStart,
       },
     });
+  }
+
+  private currentPeriodStart(anchor: Date): Date {
+    const now = new Date();
+    const day = anchor.getUTCDate();
+    const clamp = (year: number, month: number) => {
+      const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+      return new Date(Date.UTC(year, month, Math.min(day, lastDay)));
+    };
+    let start = clamp(now.getUTCFullYear(), now.getUTCMonth());
+    if (start > now) start = clamp(now.getUTCFullYear(), now.getUTCMonth() - 1);
+    return start;
   }
 }

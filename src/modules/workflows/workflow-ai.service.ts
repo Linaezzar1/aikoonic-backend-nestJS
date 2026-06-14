@@ -20,9 +20,11 @@ export interface GeneratedWorkflow {
 @Injectable()
 export class WorkflowAiService {
   private readonly pythonApiUrl: string;
+  private readonly internalApiKey: string;
 
   constructor(private readonly config: ConfigService) {
     this.pythonApiUrl = this.config.get<string>('PYTHON_API_URL') ?? 'http://backend:8000';
+    this.internalApiKey = this.config.get<string>('INTERNAL_API_KEY') ?? '';
   }
 
   async generateFromDescription(description: string): Promise<GeneratedWorkflow> {
@@ -30,7 +32,10 @@ export class WorkflowAiService {
     try {
       response = await fetch(`${this.pythonApiUrl}/ai/workflows/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Key': this.internalApiKey,
+        },
         body: JSON.stringify({ description }),
       });
     } catch {

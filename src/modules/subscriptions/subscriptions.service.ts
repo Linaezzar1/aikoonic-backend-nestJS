@@ -195,6 +195,23 @@ export class SubscriptionsService {
 
   // ── Usage tracking ────────────────────────────────────────────────────────────
 
+  /**
+   * Start of the CURRENT monthly period anchored to the subscription start
+   * day — NOT the calendar month. Subscribed on the 15th → 15th → 15th.
+   * Anchor days beyond a month's length clamp to its last day (31 → Feb 28).
+   */
+  private currentPeriodStart(anchor: Date): Date {
+    const now = new Date();
+    const day = anchor.getUTCDate();
+    const clamp = (year: number, month: number) => {
+      const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+      return new Date(Date.UTC(year, month, Math.min(day, lastDay)));
+    };
+    let start = clamp(now.getUTCFullYear(), now.getUTCMonth());
+    if (start > now) start = clamp(now.getUTCFullYear(), now.getUTCMonth() - 1);
+    return start;
+  }
+
   async trackUsage(userId: string, featureKey: string) {
     const company = await this._requireCompany(userId);
     const sub = await this.prisma.subscriptions.findFirst({
@@ -204,7 +221,7 @@ export class SubscriptionsService {
     });
     if (!sub) throw new ForbiddenException('No active subscription.');
 
-    const periodStart = new Date(new Date().toISOString().slice(0, 7) + '-01');
+    const periodStart = this.currentPeriodStart(sub.started_at);
     const features = (sub.plan.features as Record<string, any>) ?? {};
     const meta = features[featureKey];
     const limit: number | null = typeof meta === 'object' ? meta?.monthly ?? null : null;
@@ -213,7 +230,7 @@ export class SubscriptionsService {
       where: {
         company_id: company.id,
         feature_key: featureKey,
-        period_start: periodStart,
+        used_at: { gte: periodStart },
       },
     });
 
@@ -233,10 +250,10 @@ export class SubscriptionsService {
     });
     if (!sub) throw new NotFoundException('No active subscription.');
 
-    const periodStart = new Date(new Date().toISOString().slice(0, 7) + '-01');
+    const periodStart = this.currentPeriodStart(sub.started_at);
     const rows = await this.prisma.usage_logs.groupBy({
       by: ['feature_key'],
-      where: { company_id: company.id, period_start: periodStart },
+      where: { company_id: company.id, used_at: { gte: periodStart } },
       _count: { id: true },
     });
     const usageMap: Record<string, number> = {};

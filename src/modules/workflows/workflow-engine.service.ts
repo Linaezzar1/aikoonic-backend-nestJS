@@ -26,6 +26,11 @@ interface WorkflowGraph {
 export class WorkflowEngineService {
   private readonly logger = new Logger(WorkflowEngineService.name);
 
+  // Hard ceiling on nodes executed per run. A ReactFlow graph can contain a
+  // cycle (an edge back to an earlier node), which would otherwise recurse
+  // forever via setImmediate — sending emails in a loop and draining quotas.
+  private static readonly MAX_STEPS = 50;
+
   constructor(
     private prisma: PrismaService,
     private mailService: MailService,
@@ -33,12 +38,23 @@ export class WorkflowEngineService {
   ) {}
 
   async triggerWorkflows(event: string, eventValue: string, leadId: string, tenantId: string) {
+    // Events like tag_added / tag_removed / status_changed carry a meaningful
+    // value (the tag label or status). A workflow with no triggerValue set must
+    // NOT act as a wildcard for these events — that would cascade every such
+    // workflow on every tag change and risk infinite loops between workflows.
+    // Only broadcast-style events (contact_created, scheduled) may fire
+    // workflows whose triggerValue is empty/null.
+    const broadcastEvents = new Set(['contact_created', 'scheduled']);
+    const triggerValueFilter = broadcastEvents.has(event)
+      ? [{ triggerValue: eventValue }, { triggerValue: null }, { triggerValue: '' }]
+      : [{ triggerValue: eventValue }];
+
     const activeWorkflows = await this.prisma.workflow.findMany({
       where: {
         tenantId,
         isActive: true,
         trigger: event,
-        OR: [{ triggerValue: eventValue }, { triggerValue: null }, { triggerValue: '' }],
+        OR: triggerValueFilter,
       },
     });
 
@@ -114,11 +130,32 @@ export class WorkflowEngineService {
   ) {
     this.logger.log(`Executing node ${node.id} (${node.type}/${node.data.stepType ?? node.data.triggerType ?? ''}) for execution ${executionId}`);
 
-    // Save current node
-    await this.prisma.workflowExecution.update({
+    // Save current node + count this step atomically. The returned counter is
+    // our loop guard: a cyclic graph would keep re-entering executeNode, so we
+    // abort the run once it exceeds MAX_STEPS instead of looping forever.
+    const updated = await this.prisma.workflowExecution.update({
       where: { id: executionId },
-      data: { currentNodeId: node.id } as any,
+      data: { currentNodeId: node.id, currentStep: { increment: 1 } } as any,
     });
+
+    if (((updated as any).currentStep ?? 0) > WorkflowEngineService.MAX_STEPS) {
+      this.logger.error(
+        `Execution ${executionId} exceeded ${WorkflowEngineService.MAX_STEPS} steps — aborting (probable cycle in workflow "${(lead && lead.tenantId) ?? ''}")`,
+      );
+      await this.prisma.workflowExecution.update({
+        where: { id: executionId },
+        data: { status: 'failed' },
+      });
+      await this.notifications
+        .notifyTenantOwner(
+          lead.tenantId,
+          'workflow_failed',
+          'Workflow arrêté',
+          `Un workflow a été arrêté après ${WorkflowEngineService.MAX_STEPS} étapes (boucle probable dans le graphe).`,
+        )
+        .catch(() => null);
+      return;
+    }
 
     try {
       const stepType = (node.data.stepType as string) ?? node.type;
